@@ -1,0 +1,146 @@
+services:
+  app:
+    image: ${LINGSHU_API_IMAGE:-gitciu8080/lingshu-api:latest}
+    container_name: lingshu-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Service-to-service URLs must not use 127.0.0.1 from inside the API
+      # container. Values in .env are intentionally overridden here.
+      LINGSHU_DATABASE_URL: postgresql://lingshu:${LINGSHU_POSTGRES_PASSWORD:?请在 .env 中设置 LINGSHU_POSTGRES_PASSWORD}@postgres:5432/lingshu
+      LINGSHU_QDRANT_URL: http://qdrant:6333
+      LINGSHU_IDA_MCP_URL: http://ida-mcp:8745
+      LINGSHU_ANTSWORD_MCP_URL: http://antsword:30080/sse
+      LINGSHU_ANTSWORD_AUTOSTART: "false"
+      # These paths deliberately match the Linux host path. Docker receives
+      # them later when the API creates a per-session workspace bind mount.
+      LINGSHU_WORKSPACE_ROOT: ${LINGSHU_WORKSPACE_ROOT:?请在 .env 中设置 Linux 工作区绝对路径}
+      LINGSHU_WORKSPACE_DOCKER_HOST_ROOT: ${LINGSHU_WORKSPACE_DOCKER_HOST_ROOT:?请在 .env 中设置 Docker daemon 工作区绝对路径}
+      LINGSHU_AGENT_SERVICE_WORKSPACE_ROOT: ${LINGSHU_AGENT_SERVICE_WORKSPACE_ROOT:?请在 .env 中设置 Agent Service 工作区绝对路径}
+      LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT: ${LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT:?请在 .env 中设置 Agent Service Docker daemon 工作区绝对路径}
+    ports:
+      - "127.0.0.1:${LINGSHU_APP_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: ${LINGSHU_WORKSPACE_DOCKER_HOST_ROOT:?请在 .env 中设置 Docker daemon 工作区绝对路径}
+        target: ${LINGSHU_WORKSPACE_ROOT:?请在 .env 中设置 Linux 工作区绝对路径}
+      - lingshu_data:/app/data
+      - lingshu_task_memory:/app/.TaskMemory
+      - lingshu_long_memory:/app/.LongMemory
+      - lingshu_rag_memory:/app/.RAG/long-memory
+      - lingshu_reports:/app/.Reports
+      # Required for dynamic Kali workspace lifecycle management.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      knowledge-init:
+        condition: service_completed_successfully
+      workspace-init:
+        condition: service_completed_successfully
+      ida-mcp:
+        condition: service_started
+      antsword:
+        condition: service_started
+
+  # Incrementally populates Qdrant before the API starts. It is safe to run on
+  # every `compose up`; unchanged documents are skipped by knowledge_cli.
+  knowledge-init:
+    image: ${LINGSHU_API_IMAGE:-gitciu8080/lingshu-api:latest}
+    restart: "no"
+    env_file:
+      - ../.env
+    environment:
+      LINGSHU_QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        for attempt in $(seq 1 60); do
+          if curl -fsS http://qdrant:6333/readyz >/dev/null; then
+            exec python scripts/knowledge_cli.py build
+          fi
+          sleep 2
+        done
+        echo 'Qdrant did not become ready within 120 seconds' >&2
+        exit 1
+
+  # Pre-builds AgentScope's content-addressed workspace image. Once cached,
+  # subsequent starts complete immediately without rebuilding it.
+  workspace-init:
+    image: ${LINGSHU_API_IMAGE:-gitciu8080/lingshu-api:latest}
+    restart: "no"
+    env_file:
+      - ../.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["python", "scripts/build_workspace_image.py"]
+
+  qdrant:
+    # 与 requirements.txt 中 qdrant-client==1.19.0 对齐，避免 SDK 版本兼容告警。
+    image: qdrant/qdrant:v1.19.0
+    container_name: lingshu-qdrant
+    restart: unless-stopped
+    expose:
+      - "6333"
+    volumes:
+      - lingshu_qdrant:/qdrant/storage
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: lingshu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lingshu
+      POSTGRES_USER: lingshu
+      POSTGRES_PASSWORD: ${LINGSHU_POSTGRES_PASSWORD:?请在 .env 中设置 LINGSHU_POSTGRES_PASSWORD}
+    expose:
+      - "5432"
+    volumes:
+      - lingshu_postgres:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lingshu -d lingshu"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  ida-mcp:
+    image: ${LINGSHU_IDA_MCP_IMAGE:-gitciu8080/lingshu-ida-mcp:latest}
+    container_name: ida-mcp
+    restart: unless-stopped
+    environment:
+      PORT: "8745"
+    expose:
+      - "8745"
+    volumes:
+      - lingshu_ida_data:/analysis
+    # 默认不传入二进制文件参数，启动后等待 POST /upload
+    # 如需启动即分析，可取消下面两行注释并替换文件名：
+    # command: ["/analysis/your-binary"]
+
+  antsword:
+    image: ${LINGSHU_ANTSWORD_IMAGE:-gitciu8080/lingshu-antsword:latest}
+    container_name: antsword
+    restart: unless-stopped
+    expose:
+      - "30080"
+    volumes:
+      - lingshu_antsword_data:/opt/antsword/antData
+
+volumes:
+  lingshu_antsword_data:
+  lingshu_data:
+  lingshu_ida_data:
+  lingshu_long_memory:
+  lingshu_postgres:
+  lingshu_qdrant:
+  lingshu_rag_memory:
+  lingshu_reports:
+  lingshu_task_memory:
