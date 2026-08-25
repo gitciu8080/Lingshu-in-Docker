@@ -55,6 +55,9 @@ services:
       - ../.env
     environment:
       LINGSHU_QDRANT_URL: http://qdrant:6333
+    volumes:
+      # 保留 RAG 增量同步清单；否则一次性初始化容器每次启动都会全量处理。
+      - lingshu_task_memory:/app/.TaskMemory
     depends_on:
       qdrant:
         condition: service_started
