@@ -75,36 +75,18 @@ Copy-Item .env.example .env
 
 复制后，将 `.env` 与 `.env.example` 对比，按下面的清单修改。**下表之外的所有变量在模板中已带可用默认值，无需改动。**
 
-| 变量 | 模板值（.env.example） | 需要改为 | 说明 |
+|**变量**|**模板值（.env.example）**|**需要改为**|**说明**|
 |---|---|---|---|
-| `LINGSHU_EMBEDDING_BASE_URL` | `http/https://URL/v1`（占位符） | 你的 Embedding 服务 OpenAI 兼容地址，例如 `http://192.168.120.7:11434/v1` | **必改**，知识库向量化依赖它 |
-| `LINGSHU_POSTGRES_PASSWORD` | `123456`（弱默认值） | 强随机密码 | **必改** |
-| `LINGSHU_DATABASE_URL` | `postgresql://lingshu:replace-with-a-long-random-password@127.0.0.1:5432/lingshu` | 把其中的密码换成与 `LINGSHU_POSTGRES_PASSWORD` 相同的值 | **必改** |
-| `LINGSHU_WORKSPACE_DOCKER_HOST_ROOT` | `./WorkDir/v2`（相对路径） | Windows：仓库的绝对路径，如 `C:/Users/<你>/lingshu-Docker/WorkDir/v2`；Linux：`/srv/lingshu/WorkDir/v2` | **必改**，Docker daemon 必须能看到该路径 |
-| `LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT` | `./WorkDir/v2/agent-service` | 同上，末尾追加 `/agent-service` | **必改** |
-| `LINGSHU_SUPERADMIN_PASSWORD` | `gdcp@2026`（示例密码） | 仅管理员持有的高强度密码 | **必改**，否则超级管理员使用公开示例密码 |
-| `LINGSHU_REGISTRATION_INVITE_CODE` | `type-key`（示例邀请码） | 随机邀请码；留空则关闭公开注册 | **必改**，建议留空并只使用 `/superadmin` |
-| `LINGSHU_EMBEDDING_API_KEY` | `sk-your-embedding-key`（占位符） | 真实 API Key；服务无需认证时可保持占位 | 按需 |
-| `LINGSHU_EMBEDDING_MODEL` | `nomic-embed-text:latest` | 与 Embedding 服务实际部署的模型一致 | 按需 |
-| `LINGSHU_APP_PORT` | `8083` | 端口被占用时改为其他空闲端口 | 按需 |
+|`LINGSHU_EMBEDDING_BASE_URL`|`http/`[`https://URL/v1`](https://URL/v1)（占位符）|你的 Embedding 服务 OpenAI 兼容地址，例如 [`http://192.168.120.7:11434/v1`](http://192.168.120.7:11434/v1)|**必改**，知识库向量化依赖它|
+|`LINGSHU_POSTGRES_PASSWORD`|`123456`（弱默认值）|强随机密码|**必改**|
+|`LINGSHU_DATABASE_URL`|`postgresql://lingshu:`[`replace-with-a-long-random-password@127.0.0.1`](mailto:replace-with-a-long-random-password@127.0.0.1)`:5432/lingshu`|把其中的密码换成与 `LINGSHU_POSTGRES_PASSWORD` 相同的值|**必改**|
+|`LINGSHU_SUPERADMIN_PASSWORD`|`gdcp@2026`（示例密码）|仅管理员持有的高强度密码|**必改**，否则超级管理员使用公开示例密码|
+|`LINGSHU_REGISTRATION_INVITE_CODE`|`type-key`（示例邀请码）|随机邀请码；留空则关闭公开注册|**必改**，建议留空并只使用 `/superadmin`|
+|`LINGSHU_EMBEDDING_API_KEY`|`sk-your-embedding-key`（占位符）|真实 API Key；服务无需认证时可保持占位|**必改**|
+|`LINGSHU_EMBEDDING_MODEL`|`nomic-embed-text:latest`|与 Embedding 服务实际部署的模型一致|**必改**|
+|`LINGSHU_APP_PORT`|`8083`|端口被占用时改为其他空闲端口|**必改**|
 
-以 Windows Docker Desktop、仓库位于 `C:/Users/<你>/lingshu-Docker` 为例，`docker compose` 相关变量修改后为：
 
-```dotenv
-LINGSHU_EMBEDDING_BASE_URL=http://192.168.120.7:11434/v1
-LINGSHU_POSTGRES_PASSWORD=<你的强随机密码>
-LINGSHU_DATABASE_URL=postgresql://lingshu:<你的强随机密码>@127.0.0.1:5432/lingshu
-LINGSHU_WORKSPACE_ROOT=/workspace/WorkDir/v2
-LINGSHU_WORKSPACE_DOCKER_HOST_ROOT=C:/Users/<你>/lingshu-Docker/WorkDir/v2
-LINGSHU_AGENT_SERVICE_WORKSPACE_ROOT=/workspace/WorkDir/v2/agent-service
-LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT=C:/Users/<你>/lingshu-Docker/WorkDir/v2/agent-service
-```
-
-Windows 上请在 Docker Desktop 的文件共享设置中允许仓库所在盘符访问；Linux 上请先创建目录并授权：
-
-```bash
-sudo install -d -o 10001 -g 10001 /srv/lingshu/WorkDir/v2
-```
 
 ### 第 3 步：拉取镜像并启动
 
@@ -148,31 +130,6 @@ docker compose --env-file .env -f Docker/docker-compose.yml logs knowledge-init
 
 **API 容器读取的是项目根目录 `.env`，不是 `Docker/.env`。** Compose 既以它进行变量替换，也通过 `env_file: ../.env` 将变量注入 API 与初始化容器。`.env` 已被 `.dockerignore` 排除，不会写入镜像。
 
-### Windows（Docker Desktop）工作区路径
-
-容器内路径和 Docker Desktop 看到的 Windows 路径必须分别配置。容器内路径使用 `/workspace/WorkDir/v2`，宿主机路径必须是 Docker Desktop 可访问的绝对路径：
-
-```dotenv
-LINGSHU_WORKSPACE_ROOT=/workspace/WorkDir/v2
-LINGSHU_WORKSPACE_DOCKER_HOST_ROOT=C:/Users/<你>/lingshu-Docker/WorkDir/v2
-LINGSHU_AGENT_SERVICE_WORKSPACE_ROOT=/workspace/WorkDir/v2/agent-service
-LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT=C:/Users/<你>/lingshu-Docker/WorkDir/v2/agent-service
-```
-
-请在 Docker Desktop 的文件共享设置中允许该盘符/目录访问。项目会在首次创建会话时生成相应目录。
-
-### Linux 工作区路径
-
-在 Linux 上，两个"宿主机"变量通常与对应容器路径相同：
-
-```dotenv
-LINGSHU_WORKSPACE_ROOT=/srv/lingshu/WorkDir/v2
-LINGSHU_WORKSPACE_DOCKER_HOST_ROOT=/srv/lingshu/WorkDir/v2
-LINGSHU_AGENT_SERVICE_WORKSPACE_ROOT=/srv/lingshu/WorkDir/v2/agent-service
-LINGSHU_AGENT_SERVICE_DOCKER_HOST_ROOT=/srv/lingshu/WorkDir/v2/agent-service
-```
-
-确保这些目录存在，且 Docker 守护进程可读写。API 容器以 root 运行，以避免 bind mount 的 UID/GID 映射问题。
 
 ### 其余可选变量
 
